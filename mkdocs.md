@@ -3,6 +3,7 @@ site_url: https://tao-mai.github.io/graphics-notes/
 
 theme:
   name: material
+  variant: modern
   language: zh
   features:
     - navigation.tabs
