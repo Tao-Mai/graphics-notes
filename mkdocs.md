@@ -1,5 +1,6 @@
 site_name: 图形学笔记
 site_url: https://tao-mai.github.io/graphics-notes/
+dev_addr: localhost:8001
 
 theme:
   name: material
