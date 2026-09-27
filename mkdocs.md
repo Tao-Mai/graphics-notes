@@ -13,14 +13,22 @@ theme:
 
 nav:
   - 首页: index.md
-  - 章节:
+  - C++: cpp/index.md
+  - 渲染:
       - 章节目录: chapters/index.md
       - 基础:
-          - IBL: chapters/basics.md
+          - 零散: chapters/零散.md
+          - IBL: chapters/IBL.md 
+  - 仿真
+  - 几何
+  - 动画
+  - UE
 
 markdown_extensions:
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.quotes:
+      callouts: true
 
 extra_javascript:
   - javascripts/mathjax.js
