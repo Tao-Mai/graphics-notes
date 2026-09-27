@@ -16,7 +16,7 @@ nav:
   - 章节:
       - 章节目录: chapters/index.md
       - 基础:
-          - 入门: chapters/basics.md
+          - IBL: chapters/basics.md
 
 markdown_extensions:
   - pymdownx.arithmatex:
@@ -25,3 +25,6 @@ markdown_extensions:
 extra_javascript:
   - javascripts/mathjax.js
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+extra_css:
+  - stylesheets/extra.css
