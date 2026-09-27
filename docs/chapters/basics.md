@@ -27,10 +27,10 @@ $$
 L_{o,env,diffuse}=\int_\Omega E(L)\frac{c(p)}{\pi}(N\cdot L)dL=\frac{c(p)}{\pi}\int_\Omega E(L)(N\cdot L)dL
 $$
 
-其中$\int_\Omega E(L)(N\cdot L)dL$只和$\Omega$范围有关，其取决于法线$N$，所以可以预计算为irradiance map
+对于给定的 environment map，上式不再依赖材质参数和观察方向，只依赖表面法线 \(N\)。因此可以预先计算 \(E_{\mathrm{irr}}(N)\)，并用 cubemap 存储，这就是 irradiance map
 
 ## Specular BRDF
-对于Cooker-Torrance微表面模型
+对于Cook-Torrance微表面模型
 
 $$
 f_s(L,V)=\frac{D(H)F(V,H)G(L,V,H)}{4(N\cdot V)(N\cdot L)}
@@ -42,21 +42,23 @@ L_{o,env,specular}(V)=\int_\Omega E(L)\frac{D(H)F(V,H)G(L,V,H)}{4(N\cdot V)}dL
 $$
 
 ## 蒙特卡洛积分
-设被积函数为$g(L;V,N,F_0,\alpha)[E]=E(L)f_s(L;V,N,F_0,\alpha)(N\cdot L)$，五个函数参数，会决定函数分布，一个积分变量$L$
-理论上的最优pdf也应该是一个五参数，单变量的函数，$p(l|V,N,F_0,\alpha,E)$，条件概率密度函数，后面是条件，输出的是概率。其中
+对于给定的 \(V,N,F_0,\alpha\) 和环境函数 \(E\)，将 specular IBL 的 integrand 记作
 
-$$
-p^*(l)\propto g(l)
-$$
+$$g(L)=E(L)f_s(L,V;N,F_0,\alpha)(N\cdot L)$$
 
+此时唯一的积分变量是入射方向 \(L\)。如果 \(g\) 是非负标量函数，零方差 importance sampling 对应的理想 PDF 满足
 
-该形状受多个参数控制，且不好算分布函数。所以可以选择一个容易采样，且大致贴近g形状的proposal PDF
+$$p^*(L)\propto g(L)$$
+
+但这个 PDF 同时受到环境光和完整 BRDF 的影响，既难以构造，也难以直接采样。因此实际选择一个容易采样、并能够捕获 specular lobe 主要形状的 proposal PDF $q(L)$
+
+对 Cook–Torrance BRDF，变化最尖锐的部分通常来自 GGX NDF，因此可以先按照 GGX 分布采样 half vector \(H\)
+该形状受多个参数控制，且不好算分布函数。所以可以选择一个容易采样，且大致贴近g形状的proposal PDF，只是估计。
 
 $$
 q(L|V,N,\alpha)
 $$
 
-**大致形状贴近的意思是，选定$V,N,\alpha$后，q的形状已确定，而剩余的$F_0,E$任意变化，$p^*$和q的形状也相差不远，只是估计，不是严谨计算。**
 用q作为pdf，进行蒙特卡洛积分，
 
 $$
@@ -88,9 +90,9 @@ $$
 现在才开始使用Split Sum，将环境光项和BRDF项拆开
 
 $$
-L_{o}(V)\approx\frac{1}{M}\sum_{k=1}^ME(L_k)+\frac{1}{M}\sum_{k=1}^M\frac{FG(V\cdot H_k)}{(N\cdot V)(N\cdot H_k)}
+L_{o}(V)\approx(\frac{1}{M}\sum_{k=1}^ME(L_k))\times(\frac{1}{M}\sum_{k=1}^M\frac{FG(V\cdot H_k)}{(N\cdot V)(N\cdot H_k)})
 $$
-
+Split Sum 的本质，是把同一个采样分布下“环境辐射 × BRDF 权重”的期望，近似成两个期望的乘积，从而把环境和材质响应分开预计算
 ## 环境光项
 由于$L_k|V,N,\alpha$，则可以用
 
@@ -104,7 +106,7 @@ $$
 
 
 
-也就是说将$N，V$时反射光线$L_k$周围的分布近似成了N=V=L时周围的分布
+也就是说将$N，V$时反射光线$L_k$周围的分布近似成了N=V=R时周围的分布
 尤其 grazing angle 时真实 lobe 会更拉长、偏斜，而预滤波 cubemap 里用的是 \(N=V\) 的近似形状。
 
 
@@ -139,7 +141,7 @@ $$
 \int_\Omega f(l,v)\cos\theta_ldl=F_0\int_\Omega\frac{f(l,v)}{F(v,h)}(1-(1-v\cdot h)^5)\cos\theta_ldl+\int_\Omega\frac{f(l,v)}{F(v,h)}(1-v\cdot h)^5\cos\theta_ldl
 $$
 
-**积分结果和n无关，只依赖于roughness和$\cos\theta_v$，并且都在0到1之内**，于是可以用一张2d的texture记录$F_0$的scale和bias
+由于各向同性和旋转对称性，对 $N,V$ 的依赖可以压缩成 $N\cdot V$，则只依赖于roughness和$\cos\theta_v$，并且都在0到1之内，于是可以用一张2d的texture记录$F_0$的scale和bias
 **这里的积分只是理论分析，实际计算依然是由上面的采样离散项来算，离线采样多次**
 $$F_0(\frac{1}{M}\sum_{k=1}^M\frac{[1-(1-V\cdot H_k)^5]G(V\cdot H_k)}{(N\cdot V)(N\cdot H_k)})+(\frac{1}{M}\sum_{k=1}^M\frac{(1-V\cdot H_k)^5G(V\cdot H_k)}{(N\cdot V)(N\cdot H_k)})=F_0A+B$$
 
