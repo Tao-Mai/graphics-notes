@@ -23,15 +23,15 @@ $$
 ## Diffuse BRDF
 将 BRDF 分为 diffuse 和 specular 两部分。先考虑 diffuse BRDF
 
-$$f_{diffuse}(p,l,v)=\frac{c(p)}{\pi}$$
+$$f_{diffuse}(L,V)=\frac{c}{\pi}$$
 
-$c(p)$是p点材质的diffuse albedo（漫反射率），则
+$c$是材质的diffuse albedo（漫反射率），则
 
 $$
-L_{o,env,diffuse}=\int_\Omega E(L)\frac{c(p)}{\pi}(N\cdot L)dL=\frac{c(p)}{\pi}\int_\Omega E(L)(N\cdot L)dL
+L_{o,env,diffuse}=\int_\Omega E(L)\frac{c}{\pi}(N\cdot L)dL=\frac{c}{\pi}\int_\Omega E(L)(N\cdot L)dL
 $$
 
-对于给定的 environment map，上式不再依赖材质参数和观察方向，只依赖表面法线 \(N\)。因此可以预先计算 \(E_{\mathrm{irr}}(N)\)，并用 cubemap 存储，这就是 irradiance map
+对于给定的 environment map，上式不再依赖材质参数和观察方向，只依赖表面法线 $N$。因此可以预先计算 $E_{\mathrm{irr}}(N)$，并用 cubemap 存储，这就是 irradiance map
 
 ## Specular BRDF
 对于Cook-Torrance微表面模型
@@ -46,7 +46,7 @@ L_{o,env,specular}(V)=\int_\Omega E(L)\frac{D(H)F(V,H)G(L,V,H)}{4(N\cdot V)}dL
 $$
 
 ## 蒙特卡洛积分
-对于给定的 \(V,N,F_0,\alpha\) 和环境函数 \(E\)，将 specular IBL 的 integrand 记作
+对于给定的 $V,N,F_0,\alpha$ 和环境函数 $E$，将 specular IBL 的 integrand 记作
 
 $$g(L)=E(L)f_s(L,V;N,F_0,\alpha)(N\cdot L)$$
 
@@ -126,39 +126,114 @@ $$P'(R,\alpha)=P(R,R,\alpha)\approx \frac{1}{M}\sum_{k=1}^ME(L_k)$$
 该近似用 N=V=R 时的采样分布代替实际 N、V 下的分布。其误差在 grazing angle 处尤其明显，grazing angle 时真实 lobe 会更拉长、偏斜，而预滤波 cubemap 里用的是 \(N=V\) 的近似形状。
 
 ## 具体采样方法
-下面给出各向同性 GGX 分布的具体采样方法
-
-$$D(H)=\frac{\alpha^2}{\pi[(N\cdot H)^2(\alpha^2-1)+1]^2}$$
-
-所以
+下面把前面构造的半角向量分布 $p_H(H)=D(H)(N\cdot H)$ 落实为采样过程：先生成半角向量 $H$，再结合观察方向 $V$ 得到入射方向 $L$。对于各向同性 GGX，NDF 为
 
 $$
-p_H(H)=\frac{\alpha^2(N\cdot H)}{\pi[(N\cdot H)^2(\alpha^2-1)+1]^2}
+D(H)=\frac{\alpha^2}{\pi[(N\cdot H)^2(\alpha^2-1)+1]^2}
 $$
 
-从$\xi\sim U(0,1)$生成两个随机数$\xi_1,\xi_2$，**方位角均匀分布**，因此$\phi=2\pi\xi_1$，而$$F_\theta(\theta)=\int_0^\theta\frac{2\alpha^2\cos t\sin t}{[\cos^2t(\alpha^2-1)+1]^2}dt=\xi_2$$
-$x=\sin^2 t, dx=2\sin t\cos tdt$，
+代入投影面积采样的 PDF，得到 $H$ 关于立体角的方向密度：
 
-$$\begin{aligned}F_\theta(\theta)&=\int_0^{\sin^2\theta} \frac{\alpha^2}{[(1-x)(\alpha^2-1)+1]^2}dx\\&=\frac{x}{\alpha^2+(1-\alpha^2)x}|_{0}^{\sin^2\theta}\\&=\frac{\sin^2\theta}{\alpha^2+(1-\alpha^2)\sin^2\theta}\end{aligned}$$
+$$
+p_H(H|N,\alpha)=\frac{\alpha^2(N\cdot H)}{\pi[(N\cdot H)^2(\alpha^2-1)+1]^2}
+$$
 
-解$F_\theta(\theta)=\xi_2$，得到$$\sin^2\theta=\alpha^2\xi_2+(1-\alpha^2)\xi_2\sin^2\theta,\sin^2\theta=\frac{\alpha^2\xi_2}{1+(\alpha^2-1)\xi_2}$$随后结合$\phi$就可以得到局部坐标的$(x,y,z)$，再根据N转到世界坐标系，再得到世界坐标系下的L
-TODO：拆成“求 θ → 构造局部 H → 转世界空间 → 根据 V、H 得到 L”四步
+取两个独立的均匀随机数 $\xi_1,\xi_2\sim U(0,1)$，按以下四步从这个分布生成 $L$：
+
+1. **求 $\theta$**。各向同性使方位角 $\phi$ 均匀分布，因此取 $\phi=2\pi\xi_1$。在以 $N$ 为极轴的球坐标中，$d\omega_H=\sin\theta\,d\theta\,d\phi$。将方向密度对方位角积分后，极角的累积分布满足
+
+    $$
+    F_\theta(\theta)=\int_0^\theta\frac{2\alpha^2\cos t\sin t}{[\cos^2t(\alpha^2-1)+1]^2}\,dt=\xi_2
+    $$
+
+    令 $x=\sin^2t$，则 $dx=2\sin t\cos t\,dt$，上式化为
+
+    $$
+    \begin{aligned}
+    F_\theta(\theta)
+    &=\int_0^{\sin^2\theta}\frac{\alpha^2}{[(1-x)(\alpha^2-1)+1]^2}\,dx\\
+    &=\left.\frac{x}{\alpha^2+(1-\alpha^2)x}\right|_0^{\sin^2\theta}\\
+    &=\frac{\sin^2\theta}{\alpha^2+(1-\alpha^2)\sin^2\theta}
+    \end{aligned}
+    $$
+
+    令累积概率等于 $\xi_2$ 并反解，得到
+
+    $$
+    \sin^2\theta=\frac{\alpha^2\xi_2}{1+(\alpha^2-1)\xi_2}
+    $$
+
+2. **构造局部 $H$**。把 $N$ 作为局部坐标系的 $z$ 轴，用采样得到的 $\theta$ 和 $\phi$ 写出单位半角向量：
+
+    $$
+    H_{\mathrm{local}}=(\sin\theta\cos\phi,\ \sin\theta\sin\phi,\ \cos\theta)
+    $$
+
+3. **转到世界空间**。以切线 $T$、副切线 $B$ 和法线 $N$ 构造正交基，将局部向量的三个分量分别放到这三个轴上：
+
+    $$
+    H=(\sin\theta\cos\phi)T+(\sin\theta\sin\phi)B+(\cos\theta)N
+    $$
+
+4. **根据 $V,H$ 得到 $L$**。把 $V$ 视为从表面指向观察者的方向，将 $-V$ 绕世界空间的 $H$ 反射，得到入射方向：
+
+    $$
+    L=2(V\cdot H)H-V
+    $$
+
+    若 $N\cdot L\leq 0$，该方向不属于表面上半球，不参与此处的环境光积分。
+
 
 ## BRDF项
-先考察 BRDF 项的连续积分形式，
+Split Sum 的第二项只包含 BRDF 权重，与环境贴图无关。它相当于在环境辐射恒为 1 时积分镜面 BRDF：
 
 $$
-F(v,h)=F_0+(1-F_0)(1-v\cdot h)^5
+I_{\mathrm{BRDF}}(N,V,\alpha,F_0)
+=\int_{\Omega^+}f_s(L,V)(N\cdot L)\,d\omega_L
+$$
+
+采用 Schlick Fresnel，并记 $F_c=(1-V\cdot H)^5$，则
+
+$$
+F(V,H)=F_0+(1-F_0)F_c=F_0(1-F_c)+F_c
+$$
+
+BRDF 的其余部分不依赖 $F_0$，因此可以把它从积分中分离出来，将结果写成一个关于 $F_0$ 的线性形式：
+
+$$
+I_{\mathrm{BRDF}}=F_0\,A(N\cdot V,\alpha)+B(N\cdot V,\alpha)
+$$
+
+这里的 $A$ 和 $B$ 分别是 $F_0$ 的系数与常数项。实际预计算时仍使用前面从 GGX 分布得到的样本 $H_k,L_k$，而不直接求解连续积分。为缩短求和式，定义每个有效样本的几何权重和 Fresnel 系数：
+
+$$
+G_{\mathrm{vis},k}
+=\frac{G(L_k,V,H_k)(V\cdot H_k)}{(N\cdot V)(N\cdot H_k)}
 $$
 
 $$
-\int_\Omega f(l,v)\cos\theta_ldl=F_0\int_\Omega\frac{f(l,v)}{F(v,h)}(1-(1-v\cdot h)^5)\cos\theta_ldl+\int_\Omega\frac{f(l,v)}{F(v,h)}(1-v\cdot h)^5\cos\theta_ldl
+F_{c,k}=(1-V\cdot H_k)^5
 $$
 
-由于各向同性和旋转对称性，对 $N,V$ 的依赖可以压缩成 $N\cdot V$，则只依赖于roughness和$\cos\theta_v$，并且都在0到1之内，于是可以用一张2d的texture记录$F_0$的scale和bias
-**这里的积分只是理论分析，实际计算依然是由上面的采样离散项来算，离线采样多次**
+于是两个预计算量分别为
 
-$$F_0(\frac{1}{M}\sum_{k=1}^M\frac{[1-(1-V\cdot H_k)^5]G(V\cdot H_k)}{(N\cdot V)(N\cdot H_k)})+(\frac{1}{M}\sum_{k=1}^M\frac{(1-V\cdot H_k)^5G(V\cdot H_k)}{(N\cdot V)(N\cdot H_k)})=F_0A+B$$
+$$
+\begin{aligned}
+A(N\cdot V,\alpha)
+&\approx\frac{1}{M}\sum_{k=1}^{M}(1-F_{c,k})G_{\mathrm{vis},k},\\
+B(N\cdot V,\alpha)
+&\approx\frac{1}{M}\sum_{k=1}^{M}F_{c,k}G_{\mathrm{vis},k}.
+\end{aligned}
+$$
+
+若某次采样得到 $N\cdot L_k\leq 0$，该样本的权重按 0 计。由于 BRDF 各向同性，$A$ 和 $B$ 只需以 $N\cdot V$ 和粗糙度参数 $\alpha$ 为输入，可预先存入一张双通道的 2D BRDF LUT。运行时，将它与前面的预滤波环境光 $P'(R,\alpha)$ 组合：
+
+$$
+\begin{aligned}
+L_{o,\mathrm{env,specular}}(V)
+\approx P'(R,\alpha)\cdot\bigl[F_0A(N\cdot V,\alpha)+B(N\cdot V,\alpha)\bigr].
+\end{aligned}
+$$
 
 
 
@@ -168,6 +243,3 @@ $$F_0(\frac{1}{M}\sum_{k=1}^M\frac{[1-(1-V\cdot H_k)^5]G(V\cdot H_k)}{(N\cdot V)
 Diffuse IBL 将环境光在半球上的 cosine-weighted 积分存入 irradiance map。Specular IBL 则通过 GGX importance sampling 构造 Monte Carlo estimator，再利用 Split Sum 将环境项与 BRDF 项近似分离：前者进一步采用 N=V=R 的近似，预计算为不同 roughness 下的 prefiltered environment map；后者利用 Fresnel 对 F0 的线性形式，将结果预计算为一张由 roughness 和 N·V 索引的 2D BRDF LUT。
 
 因此，运行时不需要重新计算完整的环境光积分，只需要查询这些预计算结果并组合得到最终的 IBL。整个过程的核心，是通过选择合适的采样分布和降维近似，将原本依赖多个变量的积分转化为可以实时查询的低维表示。
-
-
-
