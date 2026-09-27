@@ -15,10 +15,15 @@ nav:
   - 首页: index.md
   - C++: cpp/index.md
   - 渲染:
-      - 章节目录: chapters/index.md
+      - 章节目录: 渲染/index.md
       - 基础:
-          - 零散: chapters/零散.md
-          - IBL: chapters/IBL.md 
+          - 零散: 渲染/零散.md
+          - IBL: 渲染/IBL.md
+      - 采样:
+          - 低差异化序列: 渲染/采样/低差异化序列.md
+      - 蒙特卡洛积分:
+          - 概述: 渲染/蒙特卡洛积分/概述.md
+
   - 仿真
   - 几何
   - 动画
